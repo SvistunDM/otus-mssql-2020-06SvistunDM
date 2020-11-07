@@ -100,37 +100,53 @@ select @SQL =
 		Person.PersonID = Client.PrimaryContactPersonID
 	JOIN Application.Cities AS City ON
 		City.CityID = Client.DeliveryCityID
-  WHERE (@CustomerID IS NULL 
-         OR Client.CustomerID = @CustomerID)
-    AND (@CustomerName IS NULL 
-         OR Client.CustomerName LIKE @CustomerName)
-    AND (@BillToCustomerID IS NULL 
-         OR Client.BillToCustomerID = @BillToCustomerID)
-    AND (@CustomerCategoryID IS NULL 
-         OR Client.CustomerCategoryID = @CustomerCategoryID)
-    AND (@BuyingGroupID IS NULL 
-         OR Client.BuyingGroupID = @BuyingGroupID)
-    AND Client.AccountOpenedDate >= 
-        COALESCE(@MinAccountOpenedDate, Client.AccountOpenedDate)
+  WHERE 1 = 1 '
+
+  
+   if (@CustomerID is not null) 
+    select @sql = @sql + ' and Client.CustomerID = @CustomerID'
+
+   if (@CustomerName is not null)
+   select @sql = @sql + ' and Client.CustomerName like ' + @CustomerName
+
+   if (@BillToCustomerID is not null) 
+    select @sql = @sql + ' and Client.BillToCustomerID = @BillToCustomerID'
+
+   if (@CustomerCategoryID is not null) 
+    select @sql = @sql + ' and Client.CustomerCategoryID = @CustomerCategoryID'
+
+   if (@BuyingGroupID is not null) 
+    select @sql = @sql + ' and Client.BuyingGroupID = @BuyingGroupID'
+
+   if (@MaxAccountOpenedDate is not null) 
+    select @sql = @sql + ' AND Client.AccountOpenedDate >= 
+        @MinAccountOpenedDate
     AND Client.AccountOpenedDate <= 
-        COALESCE(@MaxAccountOpenedDate, Client.AccountOpenedDate)
-    AND (@DeliveryCityID IS NULL 
-         OR Client.DeliveryCityID = @DeliveryCityID)
-    AND (@IsOnCreditHold IS NULL 
-         OR Client.IsOnCreditHold = @IsOnCreditHold)
-	AND ((@OrdersCount IS NULL)
-		OR ((SELECT COUNT(*) FROM Sales.Orders
+        @MaxAccountOpenedDate'
+
+   if (@DeliveryCityID is not null) 
+    select @sql = @sql + ' and Client.DeliveryCityID = @DeliveryCityID'
+
+   if (@IsOnCreditHold is not null) 
+    select @sql = @sql + ' and Client.IsOnCreditHold = @IsOnCreditHold'
+
+   if (@IsOnCreditHold is not null) 
+    select @sql = @sql + ' and (SELECT COUNT(*) FROM Sales.Orders
 			WHERE Orders.CustomerID = Client.CustomerID)
-				>= @OrdersCount
-			)
-		)
-	AND ((@PersonID IS NULL) 
-		OR (Client.PrimaryContactPersonID = @PersonID))
-	AND ((@DeliveryStateProvince IS NULL)
-		OR (City.StateProvinceID = @DeliveryStateProvince))
-	AND ((@PrimaryContactPersonIDIsEmployee IS NULL)
-		OR (Person.IsEmployee = @PrimaryContactPersonIDIsEmployee)
-		)';
+				>= @IsOnCreditHold
+			)'
+
+   if (@PersonID is not null) 
+    select @sql = @sql + ' and Client.PrimaryContactPersonID = @PersonID'
+
+   if (@DeliveryStateProvince is not null) 
+    select @sql = @sql + ' and Client.StateProvinceID = @DeliveryStateProvince'
+
+   if (@PrimaryContactPersonIDIsEmployee is not null) 
+    select @sql = @sql + ' and Person.IsEmployee = @PrimaryContactPersonIDIsEmployee'
+
+   -- select @SQL = @SQL + ';'
+    
     select @SQL
 
     exec sp_executesql @sql, @Parameters, @CustomerID                       
@@ -147,7 +163,7 @@ select @SQL =
                                      ,@DeliveryStateProvince           
                                      ,@PrimaryContactPersonIDIsEmployee
 
-exec CustomerSearch_KitchenSinkOtus
+--exec CustomerSearch_KitchenSinkOtus
 
 
 ---по плану запроса отношения 50% на 50%
