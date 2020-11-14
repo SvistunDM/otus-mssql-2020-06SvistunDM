@@ -62,7 +62,7 @@ WITH (
 */
 --declare @xml xml
 
-select @xml = --'<?xml version="1.0"?>'+ 
+/*select @xml = --'<?xml version="1.0"?>'+ 
 convert( VarChar(max),(SELECT TOP 5
   [StockItemName]        as '@Name',
 	[SupplierID]           as 'SupplierID',
@@ -83,6 +83,27 @@ SET @Cmd = N'sqlcmd -S ' + @@SERVERNAME + N' -d ' + DB_NAME() +
 N' -Q "SET NOCOUNT ON; DECLARE @Xml xml = '+char(39)+cast(@xml as varchar(3000))+char(39)+'; SELECT CONVERT(NVARCHAR(MAX), @Xml);" -o "C:\otus-mssql-2020-06SvistunDM\otus-mssql-2020-06SvistunDM\HW09-XML\StockItems1.xml" -y 0';
 
 EXEC master..xp_cmdshell @Cmd, NO_OUTPUT;
+*/
+
+DECLARE @query NVARCHAR(max) 
+select @query = N'SELECT TOP 5
+  [StockItemName]        as ''@Name'',
+	[SupplierID]           as ''SupplierID'',
+	[UnitPackageID]        as ''Package/UnitPackageID'',
+	[OuterPackageID]       as ''Package/OuterPackageID'',
+	[QuantityPerOuter]     as ''Package/QuantityPerOuter'',
+	[TypicalWeightPerUnit] as ''Package/TypicalWeightPerUnit'',
+	[LeadTimeDays]         as ''LeadTimeDays'',
+  [IsChillerStock]       as ''IsChillerStock'',
+  [TaxRate]              as ''TaxRate'',
+  [UnitPrice]            as ''UnitPrice''
+FROM Warehouse.StockItems
+FOR XML PATH(''Items''), ROOT(''StockItems'')'
+SET @query = REPLACE(REPLACE(@query, CHAR(13), ' '), CHAR(10), ' ')
+
+DECLARE @Cmd NVARCHAR(4000) = 'bcp "' + @Query + '" queryout "C:\otus-mssql-2020-06SvistunDM\otus-mssql-2020-06SvistunDM\HW09-XML\StockItems_exported.xml"  -T -c -S .\SQL2017 -d WideWorldImporters';
+
+exec xp_cmdshell @Cmd;
 
 /*
 3. В таблице Warehouse.StockItems в колонке CustomFields есть данные в JSON.
@@ -127,6 +148,15 @@ EXEC master..xp_cmdshell @Cmd, NO_OUTPUT;
     ,CustomFields
 	FROM Warehouse.StockItems
   WHERE 'Vintage' IN ( SELECT value FROM OPENJSON(CustomFields,'$.Tags'))  
+
+  SELECT
+  wsi.StockItemID,
+  wsi.StockItemName,
+  wsi.CustomFields
+FROM Warehouse.StockItems wsi
+CROSS APPLY OPENJSON(wsi.CustomFields,'$.Tags') as tags
+WHERE tags.value = 'Vintage'
+
 /*
 5. Пишем динамический PIVOT.
 По заданию из занятия “Операторы CROSS APPLY, PIVOT, CUBE”.
@@ -140,13 +170,40 @@ EXEC master..xp_cmdshell @Cmd, NO_OUTPUT;
 
 
 
-select case when charindex('(',sc.CustomerName) >0 
-          then substring(sc.CustomerName,charindex('(',sc.CustomerName)+1,charindex(')',sc.CustomerName)-charindex('(',sc.CustomerName)-1)
-        else sc.CustomerName 
-        end as [Название клиента]
-        ,'01'+format(month(si.InvoiceDate),'00')+cast(year(si.InvoiceDate) as varchar)  as [МесяцГод]
-         ,count(si.InvoiceID) as [Количество покупок]
+   DECLARE @R AS NVARCHAR(MAX),
+    @query  AS NVARCHAR(MAX);
+
+SET @R = STUFF((SELECT distinct ',' + QUOTENAME(sc.CustomerName) 
+                    from sales.Invoices si 
+                    join sales.Customers sc 
+                      on sc.CustomerID = si.CustomerID
+                    where si.CustomerID >=1
+                      and si.CustomerID<=20
+                   group by CustomerName,year(si.InvoiceDate),month(si.InvoiceDate)
+            FOR XML PATH(''), TYPE
+            ).value('.', 'NVARCHAR(MAX)') 
+        ,1,1,'')
+ 
+ --select @R
+
+set @query = N'
+
+select convert(varchar(10),InvoiceDate ,104) as InvoiceDate, ' + @R + '
+
+  from (select sc.CustomerName
+         ,cast(cast(year(si.InvoiceDate) as varchar)+format(month(si.InvoiceDate),''00'')+''01'' as date) as InvoiceDate
+         ,count(si.InvoiceID) as num
     from sales.Invoices si 
     join sales.Customers sc 
       on sc.CustomerID = si.CustomerID
+   where si.CustomerID >=1
+     and si.CustomerID <=20
    group by CustomerName,year(si.InvoiceDate),month(si.InvoiceDate)
+  -- order by year(si.InvoiceDate),month(si.InvoiceDate)
+   ) as CusIn
+ pivot(sum(CusIn.num) FOR CustomerName
+IN (' + @R + ')
+)AS PivotTable'
+
+select len (@query)
+execute(@query)
